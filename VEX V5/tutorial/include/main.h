@@ -22,19 +22,40 @@ enum AUTO_START_POINT {
 
 AUTO_START_POINT auto_start_point = NONE;
 
+const float M_PI = 3.141592f;
+const float trackingWheelDiameter = 2.0f;
+// you should measure your robot and modify the value below
+// https://wiki.purduesigbots.com/software/odometry
+const float leftFromCenter = 5.0f; // distance from the tracking center to the left tracking wheel
+const float rightFromCenter = 5.0f; // distance from the tracking center to the right tracking wheel
+const float backFromCenter = 2.0f; // distance from the tracking center to the back tracking wheel
+
 void autonomous(void);
 
 void auto_red_left();
 void auto_red_right();
 void auto_blue_left();
 void auto_blue_right();
-
 void auto_example(void);
 
 void initialize(void);
 void disabled(void);
 void competition_initialize(void);
 void opcontrol(void);
+
+void tracking_initialize();
+float tracking_check();
+
+float deltaLeft;
+float deltaRight;
+float deltaBack;
+
+int leftEncoderValue;
+int rightEncoderValue;
+int backEncoderValue;
+
+float globalOrientation;
+float initialOrientation;
 
 #ifdef __cplusplus
 }

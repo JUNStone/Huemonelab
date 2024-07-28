@@ -1,7 +1,8 @@
 #include "main.h"
 #include "myrobot.hpp"
 
-void autonomous(void) {
+void autonomous() {
+
 	switch (auto_start_point) {
 	case AUTO_RED_LEFT:
 		auto_red_left();
@@ -19,6 +20,7 @@ void autonomous(void) {
 		auto_example();
 		break;
 	}
+	
 }
 
 void auto_red_left() {
@@ -26,7 +28,6 @@ void auto_red_left() {
 }
 
 void auto_red_right() {
-
 }
 
 void auto_blue_left() {
@@ -37,7 +38,7 @@ void auto_blue_right() {
 
 }
 
-void auto_example(void) {
+void auto_example() {
 	inertial.tare_heading(); // you can move this function to autonomous stage
 	gps.set_position(-0.45, -1.55, inertial.get_heading()); // starting position
 	chassis.drive_set(64, 64);			// move forward
@@ -77,6 +78,63 @@ void auto_example(void) {
 	intake.move(0);
 }
 
+void tracking_initialize() {
+	if (TRACKING_ENABLED) {
+		leftEncoder.reset();
+		rightEncoder.reset();
+		backEncoder.reset();
+		
+		leftEncoderValue = leftEncoder.get_value();
+		rightEncoderValue = rightEncoder.get_value();
+		backEncoderValue = backEncoder.get_value();
+
+		deltaLeft = deltaRight = deltaBack = 0.0f;
+		// orientation should be radian, but inertial value is degree
+		// to change deg to rad, we should multiply (M_PI/180.0f) == (0.017453f)
+		initialOrientation = inertial.get_heading() * 0.017453f;
+	}
+}
+
+float tracking_check() {
+	int currentLeft = leftEncoder.get_value() - leftEncoderValue;
+	int currentRight = rightEncoder.get_value() - rightEncoderValue;
+	int currentBack = backEncoder.get_value() - backEncoderValue;
+
+	// need wheel diameter
+	deltaLeft = currentLeft * trackingWheelDiameter * M_PI;
+	deltaRight = currentRight * trackingWheelDiameter * M_PI;
+	deltaBack = currentBack * trackingWheelDiameter * M_PI;
+
+	float totalLeft = leftEncoder.get_value() * trackingWheelDiameter * M_PI;
+	float totalRight = rightEncoder.get_value() * trackingWheelDiameter * M_PI;
+
+	float ceta = initialOrientation + (totalLeft - totalRight) / (leftFromCenter + rightFromCenter);
+	float changeInAngle = ceta - globalOrientation;
+
+	float deltaX = 0.0f, deltaY = 0.0f;
+	if (ceta == 0.0f || abs(deltaLeft - deltaRight) < 0.01f) {
+		deltaX = deltaBack; // NOTE: based on purduesigbots wiki. what means $$$$?
+		deltaY = deltaRight;
+	} else {
+		deltaX = 2 * sinf(ceta/2.0f) * (deltaBack/ceta) + backFromCenter;
+		deltaY = (deltaRight/ceta) + rightFromCenter;
+	}
+
+	float averageOrientation = globalOrientation + (ceta/2.0f);
+
+	// calculate global offset (Vector D) rotated by -(averageOrientation).
+	// this can be done by converting your existing Cartesian coords to polar coords,
+	// changeing the angle, then converting back.
+
+	// calculate new absolute position (Vector current) = (Vector before) + (Vector D)
+
+	// update previous value for next calculation
+	leftEncoderValue += currentLeft;
+	rightEncoderValue += currentRight;
+	backEncoderValue += currentBack;
+	globalOrientation = ceta;
+}
+
 void initialize(void) {
 	inertial.reset(true);
 
@@ -85,6 +143,8 @@ void initialize(void) {
 	chassis.pid_drive_constants_set(0.11f, 0.15f, 0.1f, 0.5f);
 	chassis.pid_turn_constants_set(0.0f, 0.0f, 0.0f, 0.0f);
 	chassis.pid_heading_constants_set(0.0f, 0.0f, 0.0f, 0.0f);
+
+	tracking_initialize();
 }
 
 void disabled(void) {}
@@ -117,7 +177,7 @@ void opcontrol(void) {
 	int intakeVal = 127;
 	while(true) {
 		// PID Tuner
-		if (!pros::competition::is_connected()) {
+		if (USE_PID && !pros::competition::is_connected()) {
 			if (master.get_digital_new_press(DIGITAL_X)) {
 				chassis.pid_tuner_toggle(); // use A/Y to increment/decrement the constants of PID
 			}
@@ -126,10 +186,6 @@ void opcontrol(void) {
 			master.print(0, 0, "P: %.2lf", constants.kp);
 			master.print(1, 0, "I: %.2lf, %.2lf", constants.ki, constants.start_i);
 			master.print(2, 0, "D: %.2lf", constants.kd);
-			// double == long float
-			// % == format
-			// .2 == print numbers of under floating point 2
-			// %.2lf == print double type variable
 			// controller will display like below (example values)
 			// ------------------------------
 			// |P: 0.11                     |
