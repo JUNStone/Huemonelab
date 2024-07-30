@@ -72,6 +72,35 @@ def RSAGetPrivateKey(keyFileName = "RSA.pvk"):
     else :
         return None
 
+def EncryptSingleFile(pub_key, dir, fileName, encodingType = 'utf-8'):
+    os.chdir(dir)
+    
+    output = fileName.split('.')    
+    if len(output) < 2 or output[len(output)-1] == "d" : 
+        return False
+    for f in output:
+        if "encrypted" in f or "decrypted" in f:
+            return False
+    
+    txtFile = open(fileName, 'r', encoding=encodingType) #r,w,a
+    os.makedirs(fileName + '.d', exist_ok=True, mode=777) # 파일별 폴더 생성
+    os.chdir(dir + "/" + fileName + ".d") # 생성한 폴더를 작업 영역으로 지정
+    
+    print('Encrypting file:', fileName)
+    ln = 0
+    while True:
+        line = txtFile.readline()
+        if not line :
+            break
+        newFile = open(fileName + '.' + str(ln) + '.encrypted', 'wb')
+        e = rsa.encrypt(line.encode(encodingType), pub_key)
+        newFile.write(e)
+        newFile.close()
+        ln += 1
+
+    txtFile.close()
+    return True
+
 def EncryptFiles(pub_key, dir = str | None, encodingType = 'utf-8'):
     '''
     Encrypt all files in {dir} by (RSA){pub_key}.\n
@@ -112,6 +141,53 @@ def EncryptFiles(pub_key, dir = str | None, encodingType = 'utf-8'):
             ln += 1
         
         txtFile.close()
+
+def DecryptSingleFile(pvt_key, parentDir, dirName):
+    os.chdir(parentDir)
+    output = dirName.split('.')
+    if len(output) < 2 or output[len(output)-1] != "d":
+        return False
+
+    try :
+        os.chdir(parentDir + "/" + dirName)
+    except :
+        return False
+
+    encrypted_files = os.listdir()
+    base_file = ""
+    for ef in encrypted_files:
+        if '.0.encrypted' in ef :
+            base_file = ef
+            break
+    if base_file == "" :
+        return False
+
+    decrypted_file = base_file.removesuffix('.0.encrypted')
+    newFile = open(decrypted_file, 'w')
+
+    decrypted_body = ""
+
+    print('decrypting file:', decrypted_file)
+    for i in range(len(encrypted_files)) :
+        ef = decrypted_file + "." + str(i) + ".encrypted"
+        if ef not in encrypted_files:
+            print('there\'s no', ef)
+            continue
+        print('processing:', ef)
+        e = open(ef, 'rb')
+        line = b""
+        while True:
+            l = e.readline()
+            if not l :
+                break
+            line += l
+        decrypted = rsa.decrypt(line, pvt_key)
+        decrypted_body += decrypted.decode()
+        e.close()
+
+    newFile.write(decrypted_body)
+    newFile.close()
+    return True
 
 def DecryptFiles(pvt_key, dir = str | None):
     '''

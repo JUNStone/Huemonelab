@@ -6,24 +6,73 @@ import sys
 import tkinter
 from tkinter import filedialog
 
-subWindows = { "GenerateKey": None,
-               "EncryptFile": None,
-               "DecryptFile": None }
-selectedDir = ""
-publicKey = None
-privateKey = None
+subWindow = None
+selectedDir = "" # Dir to Decrypt
+selectedFile = "" # File to Encrypt
+
+publicKey = { "dir": "",
+             "fileName": "",
+             "key": None }
+privateKey = { "dir": "",
+             "fileName": "",
+             "key": None }
 strVar = None
 
 def FindDirectory():
     global selectedDir
     selectedDir = filedialog.askdirectory()
     OnGenerateKeyButtonClicked()
+
+def FindFile():
+    global selectedFile
+    selectedFile = filedialog.askopenfilename()
+    OnEncryptFileButtonClicked()
+
+def FindKeyFile(isPublic = bool, isEncrypt = bool):
+    fullPath = filedialog.askopenfilename()
+    splited = fullPath.split('/')
+    fileName = splited[-1]
+    filePath = "/".join(splited[0:-1])
     
-def SubWindowClose(type):
-    global subWindows
-    if subWindows[type] is not None :
-        subWindows[type].destroy()
-        subWindows[type] = None
+    key = None
+    dic = None
+    os.chdir(filePath)
+    if isPublic:
+        dic = publicKey
+        key = EncryptCore.RSAGetPublicKey(fileName)
+    else :
+        dic = privateKey
+        key = EncryptCore.RSAGetPrivateKey(fileName)
+    
+    dic['dir'] = filePath
+    dic['fileName'] = fileName
+    dic['key'] = key
+    
+    if isEncrypt:
+        OnEncryptFileButtonClicked()
+    else:
+        OnDecryptFileButtonClicked()
+
+def GetSubWindow(title, geometry):
+    global subWindow
+    if subWindow == None:
+        subWindow = tkinter.Tk()
+    
+    window = subWindow
+    for w in window.winfo_children():
+        w.destroy()
+    window.title(title)
+    window.geometry(geometry)
+    window.wm_resizable(False, False)
+    window.protocol("WM_DELETE_WINDOW", SubWindowClose)
+
+    return subWindow
+
+def SubWindowClose():
+    global subWindow
+    if subWindow is not None :
+        subWindow.destroy()
+        subWindow = None
 
 def GenerateKey():
     global selectedDir
@@ -37,17 +86,17 @@ def GenerateKey():
     os.chdir(selectedDir)
     global publicKey
     global privateKey
-    publicKey, privateKey = EncryptCore.RSAInitialize(True, fileName)
+    (pub, pvk) = EncryptCore.RSAInitialize(True, fileName)
+    publicKey['key'] = pub
+    publicKey["dir"] = selectedDir
+    publicKey["fileName"] = fileName+".pub"
+    
+    privateKey['key'] = pvk
+    privateKey["dir"] = selectedDir
+    privateKey["fileName"] = fileName+".pvk"
 
 def OnGenerateKeyButtonClicked():
-    global subWindows
-    if subWindows["GenerateKey"] == None:
-        subWindows["GenerateKey"] = tkinter.Tk(className=" Generate Key")
-    
-    window = subWindows["GenerateKey"]
-    window.geometry('320x240')
-    window.wm_resizable(False, False)
-    window.protocol("WM_DELETE_WINDOW", lambda:SubWindowClose("GenerateKey"))
+    window = GetSubWindow('Generate Key', '320x240')
 
     label = tkinter.Label(window, text="Selected Directory:", padx=3, pady=10)
     label.grid(row=1, column=1)
@@ -75,6 +124,43 @@ def OnGenerateKeyButtonClicked():
     generateKeyButton = tkinter.Button(window, text="Generate key", command=GenerateKey, padx=10)
     generateKeyButton.grid(row=3, column=1)
 
+def OnEncryptFileButtonClicked():
+    window = GetSubWindow('Encrypt', '320x240')
+    
+    keyLabel = tkinter.Label(window, text="Public Key:", padx=3, pady=10)
+    keyLabel.grid(row=1, column=1)
+    
+    keyTextBox = tkinter.Entry(window, state="normal")
+    s = ""
+    if publicKey['dir'] != "" and publicKey['fileName'] != "":
+        s = publicKey["dir"] + "/" + publicKey["fileName"]
+    keyTextBox.insert(0, s)
+    keyTextBox.config(state="readonly")
+    keyTextBox.grid(row=1, column=2)
+    
+    keyFindButton = tkinter.Button(window, text="..Find", command=lambda:FindKeyFile(True, True))
+    keyFindButton.grid(row=1, column=3)
+    
+    fileLabel = tkinter.Label(window, text="Selected File:", padx=3, pady=10)
+    fileLabel.grid(row=2, column=1)
+
+    global selectedFile
+    fileTextBox = tkinter.Entry(window, state="normal")
+    fileTextBox.insert(0, selectedFile)
+    fileTextBox.config(state="readonly")
+    fileTextBox.grid(row=2, column=2)
+
+    fileFindButton = tkinter.Button(window, text="..Find", command=FindFile)
+    fileFindButton.grid(row=2, column=3)
+
+    if selectedFile == "":
+        return
+
+    encryptFileButton = tkinter.Button(window, text="Encrypt file", command=lambda:EncryptCore.EncryptSingleFile(publicKey['key'], publicKey['dir'], publicKey['fileName']), padx=10)
+    encryptFileButton.grid(row=4, column=1)
+
+def OnDecryptFileButtonClicked():
+    window = GetSubWindow('Decrypt', '320x240')
 
 def MainWindow():
     window = tkinter.Tk(className=" Encrypt File")
@@ -85,9 +171,9 @@ def MainWindow():
     mainLabel.pack(padx= 10, pady=10)
     gkButton = tkinter.Button(window, text="Generate key", command=OnGenerateKeyButtonClicked)
     gkButton.pack(pady = 5)
-    eButton = tkinter.Button(window, text="Encrypt file", command=lambda:TestFunction(window))
+    eButton = tkinter.Button(window, text="Encrypt file", command=OnEncryptFileButtonClicked)
     eButton.pack(pady = 5)
-    dButton = tkinter.Button(window, text="Decrypt file", command=lambda:TestFunction(window))
+    dButton = tkinter.Button(window, text="Decrypt file", command=OnDecryptFileButtonClicked)
     dButton.pack(pady = 5)
 
     return window
